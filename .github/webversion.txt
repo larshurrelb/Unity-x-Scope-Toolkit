@@ -1,0 +1,523 @@
+// Copy this entire file to your Next.js project as:
+// - app/page.tsx (for Next.js 13+ App Router)
+// - pages/index.tsx (for Next.js Pages Router)
+
+'use client'; // Only needed for App Router
+
+import { useState, useRef } from 'react';
+
+const RUNPOD_URL = 'https://0g33lsedk4fel7-8000.proxy.runpod.net';
+
+export default function ScopeClient() {
+  const [prompt, setPrompt] = useState('A beautiful cyberpunk cityscape at night');
+  const [status, setStatus] = useState('Not connected');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+
+  const loadPipeline = async () => {
+    setIsLoading(true);
+    setStatus('Checking pipeline status...');
+
+    try {
+      // First check if pipeline is already loaded
+      console.log('Checking if LongLive pipeline is already loaded...');
+      const statusRes = await fetch(`${RUNPOD_URL}/api/v1/pipeline/status`);
+
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        console.log('Current status:', statusData);
+
+        if (statusData.status === 'loaded' && statusData.pipeline_id === 'longlive') {
+          console.log('✅ Pipeline already loaded!');
+          setStatus('Pipeline already loaded! Ready to stream.');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Pipeline not loaded, load it now
+      setStatus('Loading pipeline...');
+      console.log('Loading LongLive pipeline...');
+      const loadResponse = await fetch(`${RUNPOD_URL}/api/v1/pipeline/load`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipeline_id: 'longlive',
+          load_params: {
+            height: 320,
+            width: 576,
+            seed: 42
+          }
+        })
+      });
+
+      const loadData = await loadResponse.json();
+      console.log('Load response:', loadData);
+
+      // Poll until pipeline is ready
+      const maxAttempts = 300;
+      let attempts = 0;
+
+      while (attempts < maxAttempts) {
+        console.log(`Polling status (attempt ${attempts + 1})...`);
+
+        const statusRes = await fetch(`${RUNPOD_URL}/api/v1/pipeline/status`);
+
+        if (!statusRes.ok) {
+          console.error('Status check failed:', statusRes.status);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          attempts++;
+          continue;
+        }
+
+        const statusData = await statusRes.json();
+        console.log('Status:', statusData);
+
+        if (statusData.status === 'loaded') {
+          setStatus('Pipeline loaded! Ready to stream.');
+          setIsLoading(false);
+          console.log('✅ Pipeline ready!');
+          return;
+        } else if (statusData.status === 'error') {
+          throw new Error(statusData.error || 'Pipeline loading failed');
+        }
+
+        setStatus(`Loading pipeline... ${statusData.status} (${attempts + 1}s)`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      }
+
+      throw new Error('Timeout waiting for pipeline to load');
+
+    } catch (error) {
+      console.error('Load pipeline error:', error);
+      setStatus(`Error: ${error}`);
+      setIsLoading(false);
+    }
+  };
+
+  const startStream = async () => {
+    if (isStreaming || !prompt) return;
+
+    setStatus('Getting webcam access...');
+
+    try {
+      // 1. Get local webcam video (matching Scope's exact constraints)
+      console.log('Requesting webcam access...');
+      const localStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 576, min: 288, max: 576 },
+          height: { ideal: 320, min: 160, max: 320 },
+          frameRate: { ideal: 15, min: 5, max: 30 }
+        },
+        audio: false
+      });
+
+      localStreamRef.current = localStream;
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStream;
+      }
+
+      setStatus('Getting ICE servers...');
+
+      // 2. Get ICE servers (WITH ERROR HANDLING)
+      console.log('Fetching ICE servers from:', `${RUNPOD_URL}/api/v1/webrtc/ice-servers`);
+      const iceServersRes = await fetch(`${RUNPOD_URL}/api/v1/webrtc/ice-servers`);
+
+      console.log('ICE servers response status:', iceServersRes.status);
+      console.log('ICE servers response headers:', {
+        contentType: iceServersRes.headers.get('content-type'),
+        contentLength: iceServersRes.headers.get('content-length')
+      });
+
+      const iceText = await iceServersRes.text();
+      console.log('ICE servers response (first 200 chars):', iceText.substring(0, 200));
+
+      let iceServers;
+      try {
+        const iceData = JSON.parse(iceText);
+        iceServers = iceData.iceServers;
+        console.log('Parsed ICE servers:', iceServers);
+      } catch (e) {
+        console.error('Failed to parse ICE servers response:', iceText);
+        throw new Error('Failed to get ICE servers - got HTML instead of JSON. Check if /api/v1/ice-servers endpoint exists.');
+      }
+
+      // 3. Create WebRTC peer connection
+      const pc = new RTCPeerConnection({ iceServers });
+      pcRef.current = pc;
+
+      // 4. Create data channel for sending prompts
+      const dc = pc.createDataChannel('parameters', { ordered: true });
+      dcRef.current = dc;
+
+      dc.onopen = () => {
+        console.log('Data channel opened');
+        setStatus('Connected! Sending prompt...');
+
+        // Send initial prompt
+        dc.send(JSON.stringify({
+          input_mode: 'video',
+          prompts: [{ text: prompt, weight: 1.0 }],
+          prompt_interpolation_method: 'slerp',
+          denoising_step_list: [1000, 750, 500, 250],
+          noise_scale: 0.8,
+          manage_cache: true
+        }));
+      };
+
+      dc.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log('Data channel message:', data);
+        if (data.type === 'stream_stopped') {
+          setStatus(`Stream stopped: ${data.error_message || 'Unknown reason'}`);
+          setIsStreaming(false);
+        }
+      };
+
+      // 5. Add local video track (IMPORTANT for LongLive video mode)
+      console.log('Adding local video tracks...');
+      localStream.getTracks().forEach(track => {
+        console.log('Adding track:', track.kind, track.label);
+        pc.addTrack(track, localStream);
+      });
+
+      // 6. Handle incoming video from server
+      pc.ontrack = (event) => {
+        console.log('Received video track from server');
+        if (videoRef.current && event.streams[0]) {
+          videoRef.current.srcObject = event.streams[0];
+          setStatus('Streaming!');
+          setIsStreaming(true);
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log('Connection state:', pc.connectionState);
+        setStatus(`Connection: ${pc.connectionState}`);
+
+        if (pc.connectionState === 'connected') {
+          setIsStreaming(true);
+          setStatus('Streaming! Processing your video...');
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          setIsStreaming(false);
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', pc.iceConnectionState);
+      };
+
+      // 7. ICE candidate handling
+      const queuedCandidates: RTCIceCandidate[] = [];
+      let sessionId: string | null = null;
+
+      pc.onicecandidate = async ({ candidate }) => {
+        if (candidate && sessionId) {
+          console.log('Sending ICE candidate to server');
+          try {
+            await fetch(`${RUNPOD_URL}/api/v1/webrtc/offer/${sessionId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                candidates: [{
+                  candidate: candidate.candidate,
+                  sdpMid: candidate.sdpMid,
+                  sdpMLineIndex: candidate.sdpMLineIndex
+                }]
+              })
+            });
+            console.log('ICE candidate sent successfully');
+          } catch (err) {
+            console.error('Failed to send ICE candidate:', err);
+          }
+        } else if (candidate) {
+          console.log('Queuing ICE candidate (no session ID yet)');
+          queuedCandidates.push(candidate);
+        } else {
+          console.log('ICE gathering complete');
+        }
+      };
+
+      // 8. Create and send WebRTC offer (WITH ERROR HANDLING)
+      setStatus('Creating WebRTC offer...');
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      console.log('Created offer, sending to server...');
+
+      const offerBody = {
+        sdp: pc.localDescription!.sdp,
+        type: pc.localDescription!.type,
+        initialParameters: {
+          input_mode: 'video',
+          prompts: [{ text: prompt, weight: 1.0 }],
+          prompt_interpolation_method: 'slerp',
+          denoising_step_list: [1000, 750, 500, 250],
+          noise_scale: 0.8,
+          manage_cache: true
+        }
+      };
+
+      console.log('Sending offer to:', `${RUNPOD_URL}/api/v1/webrtc/offer`);
+      console.log('Offer body:', offerBody);
+
+      const offerRes = await fetch(`${RUNPOD_URL}/api/v1/webrtc/offer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(offerBody)
+      });
+
+      console.log('Offer response status:', offerRes.status);
+      console.log('Offer response headers:', {
+        contentType: offerRes.headers.get('content-type'),
+        contentLength: offerRes.headers.get('content-length')
+      });
+
+      const offerText = await offerRes.text();
+      console.log('Offer response (first 500 chars):', offerText.substring(0, 500));
+
+      let sdp, type, newSessionId;
+      try {
+        const offerData = JSON.parse(offerText);
+        sdp = offerData.sdp;
+        type = offerData.type;
+        newSessionId = offerData.sessionId;
+        console.log('Received answer, session ID:', newSessionId);
+      } catch (e) {
+        console.error('Failed to parse offer response:', offerText);
+        throw new Error('Failed to process WebRTC offer - got HTML instead of JSON. Check if /api/v1/webrtc/offer endpoint exists.');
+      }
+
+      sessionId = newSessionId;
+
+      // 9. Set remote description
+      await pc.setRemoteDescription({ sdp, type } as RTCSessionDescriptionInit);
+      console.log('Remote description set successfully');
+
+      // Send queued ICE candidates
+      if (queuedCandidates.length > 0) {
+        console.log('Sending queued ICE candidates:', queuedCandidates.length);
+        await fetch(`${RUNPOD_URL}/api/v1/webrtc/offer/${sessionId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidates: queuedCandidates.map(c => ({
+              candidate: c.candidate,
+              sdpMid: c.sdpMid,
+              sdpMLineIndex: c.sdpMLineIndex
+            }))
+          })
+        });
+        console.log('Queued ICE candidates sent');
+      }
+
+      setStatus('WebRTC connection established, waiting for video...');
+
+    } catch (error) {
+      console.error('Stream error:', error);
+      setStatus(`Error: ${error}`);
+      setIsStreaming(false);
+
+      // Cleanup on error
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current = null;
+      }
+    }
+  };
+
+  const stopStream = () => {
+    console.log('Stopping stream...');
+
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    setIsStreaming(false);
+    setStatus('Disconnected');
+  };
+
+  const updatePrompt = () => {
+    if (dcRef.current && dcRef.current.readyState === 'open') {
+      dcRef.current.send(JSON.stringify({
+        prompts: [{ text: prompt, weight: 1.0 }],
+        prompt_interpolation_method: 'slerp',
+        denoising_step_list: [1000, 750, 500, 250],
+        noise_scale: 0.8,
+        manage_cache: true
+      }));
+      setStatus('Prompt updated!');
+      console.log('Prompt updated to:', prompt);
+    } else {
+      console.warn('Data channel not open, cannot update prompt');
+    }
+  };
+
+  return (
+    <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', fontFamily: 'system-ui' }}>
+      <h1>Scope LongLive Client</h1>
+
+      <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+        <p style={{ margin: 0 }}>
+          <strong>Status:</strong> <span style={{ color: isStreaming ? 'green' : 'orange' }}>{status}</span>
+        </p>
+      </div>
+
+      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <button
+          onClick={loadPipeline}
+          disabled={isLoading}
+          style={{
+            padding: '12px 24px',
+            fontSize: '16px',
+            backgroundColor: isLoading ? '#ccc' : '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: isLoading ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isLoading ? 'Loading Pipeline...' : 'Load Pipeline'}
+        </button>
+
+        <button
+          onClick={startStream}
+          disabled={isStreaming || isLoading}
+          style={{
+            padding: '12px 24px',
+            fontSize: '16px',
+            backgroundColor: (isStreaming || isLoading) ? '#ccc' : '#28a745',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: (isStreaming || isLoading) ? 'not-allowed' : 'pointer'
+          }}
+        >
+          Start Stream
+        </button>
+
+        <button
+          onClick={stopStream}
+          disabled={!isStreaming}
+          style={{
+            padding: '12px 24px',
+            fontSize: '16px',
+            backgroundColor: !isStreaming ? '#ccc' : '#dc3545',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: !isStreaming ? 'not-allowed' : 'pointer'
+          }}
+        >
+          Stop Stream
+        </button>
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ display: 'block', marginBottom: '8px' }}>
+          <strong>Prompt (style transfer):</strong>
+        </label>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={2}
+          style={{
+            width: '100%',
+            padding: '12px',
+            fontSize: '14px',
+            borderRadius: '6px',
+            border: '1px solid #ccc',
+            fontFamily: 'system-ui'
+          }}
+          placeholder="Enter style description..."
+        />
+        <button
+          onClick={updatePrompt}
+          disabled={!isStreaming}
+          style={{
+            padding: '10px 20px',
+            marginTop: '10px',
+            backgroundColor: !isStreaming ? '#ccc' : '#17a2b8',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: !isStreaming ? 'not-allowed' : 'pointer'
+          }}
+        >
+          Update Prompt (while streaming)
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+        <div>
+          <h2 style={{ marginTop: 0 }}>Your Webcam (Input):</h2>
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            style={{
+              width: '100%',
+              backgroundColor: '#000',
+              border: '2px solid #333',
+              borderRadius: '8px'
+            }}
+          />
+        </div>
+
+        <div>
+          <h2 style={{ marginTop: 0 }}>AI Processed Video (Output):</h2>
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            style={{
+              width: '100%',
+              backgroundColor: '#000',
+              border: '2px solid #333',
+              borderRadius: '8px'
+            }}
+          />
+        </div>
+      </div>
+
+      <div style={{
+        padding: '15px',
+        backgroundColor: '#e7f3ff',
+        borderRadius: '8px',
+        fontSize: '14px',
+        lineHeight: '1.6'
+      }}>
+        <p style={{ marginTop: 0 }}><strong>Instructions:</strong></p>
+        <ol style={{ marginBottom: 0, paddingLeft: '20px' }}>
+          <li>Click "Load Pipeline" and wait (~1-2 min first time for model download)</li>
+          <li>Enter a style prompt (e.g., "cyberpunk cityscape", "watercolor painting", "anime style")</li>
+          <li>Click "Start Stream" and allow webcam access when prompted</li>
+          <li>See your webcam video transformed in real-time!</li>
+          <li>Update the prompt while streaming to change the style</li>
+        </ol>
+        <p style={{ marginBottom: 0, marginTop: '10px' }}>
+          <strong>⚠️ Check browser console (F12) for detailed debugging logs</strong>
+        </p>
+      </div>
+    </div>
+  );
+}
