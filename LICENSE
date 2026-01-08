@@ -1,0 +1,40 @@
+MIT License
+
+Copyright (c) 2026 Lars Hurrelbrink
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Third-Party Assets
+
+This project uses the following third-party assets that must be obtained separately:
+
+- **Starter Assets - Third Person Character Controller** (Unity Asset Store)
+  - Copyright © Unity Technologies
+  - Must be obtained from: https://assetstore.unity.com/packages/essentials/starter-assets-thirdperson-updates-in-new-charactercontroller-pa-196526
+  - Subject to Unity Asset Store EULA
+
+- **Crimson Text Font** (SIL Open Font License 1.1)
+  - Copyright 2010 The Crimson Text Project Authors
+  - License: https://openfontlicense.org
+
+- **Unity Packages** (Unity Companion License)
+  - Universal Render Pipeline, WebRTC, and other Unity packages
+  - Copyright © Unity Technologies
