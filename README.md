@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="ReadMeCover.png" alt="Unity x Scope Toolkit" width="300">
+</div>
+
 # Unity x Scope Toolkit
 
 A Unity toolkit for creating **real-time AI-stylized video experiences** using [Scope's LongLive](https://github.com/ScopeFoundry/Scope) API via WebRTC streaming.
