@@ -257,6 +257,7 @@ export default function ScopeClient() {
         type: pc.localDescription!.type,
         initialParameters: {
           input_mode: 'video',
+          pipeline_ids: ['longlive'],
           prompts: [{ text: prompt, weight: 1.0 }],
           prompt_interpolation_method: 'slerp',
           denoising_step_list: [1000, 750, 500, 250],

@@ -496,3 +496,7 @@ characterCamera.nearClipPlane = targetCamera.nearClipPlane;
 - Setup guides: `CHARACTER_LAYER_SETUP.md`, `DEPTH_EXTRACTION_SETUP.md`, `TEXTURE_FORMAT_FIX.md`, `VIDEO_INPUT_SWITCHER_GUIDE.md`
 - Editor tools: `Assets/Scripts/Editor/DaydreamTextureHelper.cs`
 - API documentation: `Assets/Scripts/DaydreamAPIManager-SD-Turbo.md`
+
+IMPORTANT: This project is released as a toolkit for others to use as a public github repository. This means its important no API Keys are in the code, no name of the user leaks and no proprietary information is shared. 
+
+Code should be commented to help users understand how to use and modify the toolkit for their own purposes. The only markdown for users should be the readme file. All other markdown files for internal use (as in for development) should land in the Assets/NotinGit folder. 

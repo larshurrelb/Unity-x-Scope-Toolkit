@@ -121,7 +121,7 @@ public class PromptManager : MonoBehaviour
         // Auto-find the API manager if not assigned
         if (apiManager == null)
         {
-            apiManager = FindObjectOfType<DaydreamAPIManager>();
+            apiManager = FindFirstObjectByType<DaydreamAPIManager>();
             if (apiManager == null)
             {
                 Debug.LogError("[PromptManager] No DaydreamAPIManager found in scene!");
@@ -131,7 +131,7 @@ public class PromptManager : MonoBehaviour
         // Auto-find the character controller if not assigned
         if (characterController == null)
         {
-            characterController = FindObjectOfType<ThirdPersonController>();
+            characterController = FindFirstObjectByType<ThirdPersonController>();
             if (characterController == null)
             {
                 Debug.LogWarning("[PromptManager] No ThirdPersonController found in scene! Auto-update disabled.");
@@ -337,29 +337,34 @@ public class PromptManager : MonoBehaviour
             // Skip objects that are too far
             if (distance > maxVisibleDistance) continue;
 
-            // Skip objects behind the camera
-            float dotForward = Vector3.Dot(toObject.normalized, cameraForward);
-            if (dotForward < 0) continue;
+            // Check if object is in camera viewport (this replaces the dot product approach)
+            Vector3 viewportPoint = playerCamera.WorldToViewportPoint(obj.transform.position);
+            
+            // Skip if behind camera (z < 0) or outside viewport bounds (x/y not in 0-1 range)
+            if (viewportPoint.z < 0 || 
+                viewportPoint.x < 0 || viewportPoint.x > 1 || 
+                viewportPoint.y < 0 || viewportPoint.y > 1)
+            {
+                continue;
+            }
 
-            // Determine horizontal position relative to camera (left/center/right)
-            float dotRight = Vector3.Dot(toObject.normalized, cameraRight);
+            // Determine horizontal position based on viewport X (0=left, 0.5=center, 1=right)
             string horizontalPos;
-            if (Mathf.Abs(dotRight) < horizontalCenterThreshold)
-                horizontalPos = "center";
-            else if (dotRight > 0)
+            if (viewportPoint.x < (0.5f - horizontalCenterThreshold))
+                horizontalPos = "left";
+            else if (viewportPoint.x > (0.5f + horizontalCenterThreshold))
                 horizontalPos = "right";
             else
-                horizontalPos = "left";
+                horizontalPos = "center";
 
-            // Determine vertical position relative to camera (top/middle/bottom)
-            float dotUp = Vector3.Dot(toObject.normalized, cameraUp);
+            // Determine vertical position based on viewport Y (0=bottom, 0.5=middle, 1=top)
             string verticalPos;
-            if (Mathf.Abs(dotUp) < verticalCenterThreshold)
-                verticalPos = "middle";
-            else if (dotUp > 0)
+            if (viewportPoint.y < (0.5f - verticalCenterThreshold))
+                verticalPos = "bottom";
+            else if (viewportPoint.y > (0.5f + verticalCenterThreshold))
                 verticalPos = "top";
             else
-                verticalPos = "bottom";
+                verticalPos = "middle";
 
             // Build position key
             string positionKey = GetPositionDescription(verticalPos, horizontalPos);
@@ -367,8 +372,8 @@ public class PromptManager : MonoBehaviour
             // Determine foreground or background
             bool isForeground = distance <= foregroundThreshold;
 
-            // Get the object name
-            string objectName = obj.name;
+            // Get the object name with material color prefix
+            string objectName = GetObjectNameWithColor(obj);
 
             // Add to appropriate dictionary
             var targetDict = isForeground ? foregroundObjects : backgroundObjects;
@@ -459,6 +464,87 @@ public class PromptManager : MonoBehaviour
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Gets the object name with material color prefix(es).
+    /// Collects unique material names from the object and all its children,
+    /// then prepends them to the object name (e.g., "red house", "red and blue car").
+    /// If all materials share the same color, it only appears once.
+    /// </summary>
+    private string GetObjectNameWithColor(GameObject obj)
+    {
+        System.Collections.Generic.HashSet<string> uniqueColors = new System.Collections.Generic.HashSet<string>();
+        
+        // Collect material colors from this object and all children
+        CollectMaterialColors(obj, uniqueColors);
+        
+        string objectName = obj.name;
+        
+        if (uniqueColors.Count == 0)
+        {
+            // No materials found, return just the object name
+            return objectName;
+        }
+        else if (uniqueColors.Count == 1)
+        {
+            // Single color - prepend it to the name
+            foreach (string color in uniqueColors)
+            {
+                return $"{color} {objectName}";
+            }
+        }
+        else
+        {
+            // Multiple colors - join with "and"
+            System.Collections.Generic.List<string> colorList = new System.Collections.Generic.List<string>(uniqueColors);
+            if (colorList.Count == 2)
+            {
+                return $"{colorList[0]} and {colorList[1]} {objectName}";
+            }
+            else
+            {
+                // For 3+ colors: "red, blue, and green object"
+                string lastColor = colorList[colorList.Count - 1];
+                colorList.RemoveAt(colorList.Count - 1);
+                return $"{string.Join(", ", colorList)}, and {lastColor} {objectName}";
+            }
+        }
+        
+        return objectName;
+    }
+
+    /// <summary>
+    /// Recursively collects unique material names from an object and all its children.
+    /// </summary>
+    private void CollectMaterialColors(GameObject obj, System.Collections.Generic.HashSet<string> colors)
+    {
+        // Check renderers on this object
+        Renderer[] renderers = obj.GetComponents<Renderer>();
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer.sharedMaterials != null)
+            {
+                foreach (Material mat in renderer.sharedMaterials)
+                {
+                    if (mat != null && !string.IsNullOrEmpty(mat.name))
+                    {
+                        // Clean up the material name (remove " (Instance)" suffix if present)
+                        string materialName = mat.name.Replace(" (Instance)", "").Trim();
+                        if (!string.IsNullOrEmpty(materialName))
+                        {
+                            colors.Add(materialName.ToLower());
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Recursively process all children
+        foreach (Transform child in obj.transform)
+        {
+            CollectMaterialColors(child.gameObject, colors);
+        }
     }
 
     /// <summary>

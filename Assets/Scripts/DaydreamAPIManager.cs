@@ -58,6 +58,7 @@ public class DaydreamAPIManager : MonoBehaviour
     public class RunPodParameters
     {
         public string input_mode = "video";
+        public string[] pipeline_ids = new string[] { "longlive" };
         public List<PromptData> prompts = new List<PromptData>();
         public string prompt_interpolation_method = "slerp";
         public int[] denoising_step_list = new int[] { 1000, 750, 500, 250 };
@@ -361,15 +362,7 @@ public class DaydreamAPIManager : MonoBehaviour
     {
         noiseScale = Mathf.Clamp01(newNoiseScale);
         Debug.Log($"[RunPod] Setting noise scale to: {noiseScale}");
-        if (isStreaming && dataChannel != null && dataChannel.ReadyState == RTCDataChannelState.Open)
-        {
-            UpdateParameters();
-        }
-        else
-        {
-            // Update UI even if not streaming yet
-            UpdateUIDisplays();
-        }
+        UpdateParameters();
     }
 
     /// <summary>
@@ -410,18 +403,18 @@ public class DaydreamAPIManager : MonoBehaviour
         {
             denoisingSteps = steps;
             Debug.Log($"[RunPod] Setting denoising steps to: [{string.Join(", ", steps)}]");
-            if (isStreaming && dataChannel != null && dataChannel.ReadyState == RTCDataChannelState.Open)
-            {
-                UpdateParameters();
-            }
+            UpdateParameters();
         }
     }
 
     public void UpdateParameters()
     {
+        // Always update UI displays so the prompt is visible even when not connected
+        UpdateUIDisplays();
+        
         if (dataChannel == null || dataChannel.ReadyState != RTCDataChannelState.Open)
         {
-            Debug.LogWarning("[RunPod] Data channel not open, cannot update parameters.");
+            Debug.LogWarning("[RunPod] Data channel not open, cannot send parameters to server (UI updated locally).");
             return;
         }
 
@@ -446,9 +439,6 @@ public class DaydreamAPIManager : MonoBehaviour
         string json = JsonUtility.ToJson(paramsObj);
         Debug.Log($"[RunPod] Sending update: {json}");
         dataChannel.Send(json);
-        
-        // Update UI displays
-        UpdateUIDisplays();
     }
 
     /// <summary>
