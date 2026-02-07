@@ -7,6 +7,15 @@ using Unity.WebRTC;
 using System.Text;
 using TMPro;
 
+public enum ResolutionPreset
+{
+    Preset_448x252,   // Low bandwidth
+    Preset_576x324,   // Medium quality (default)
+    Preset_704x396,   // High quality
+    Preset_1088x612,  // Very high quality
+    Custom            // User-defined
+}
+
 /// <summary>
 /// Manages the connection to the RunPod LongLive API.
 /// Handles pipeline loading, WebRTC signaling (single connection for send/recv),
@@ -134,8 +143,10 @@ public class DaydreamAPIManager : MonoBehaviour
     [Header("Stream Settings")]
     [TextArea(3, 10)]
     [SerializeField] private string prompt = "A beautiful cyberpunk cityscape at night";
+    [Header("Resolution Settings")]
+    [SerializeField] private ResolutionPreset resolutionPreset = ResolutionPreset.Preset_576x324;
     [SerializeField] private int width = 576;
-    [SerializeField] private int height = 320;
+    [SerializeField] private int height = 324;
     [SerializeField] private int seed = 42;
     [Tooltip("Steps for denoising (e.g. 1000, 750, 500, 250)")]
     [SerializeField] private int[] denoisingSteps = new int[] { 1000, 750, 500, 250 };
@@ -152,6 +163,8 @@ public class DaydreamAPIManager : MonoBehaviour
     [SerializeField] private bool manageCache = true;
 
     [Header("UI Display")]
+    [Tooltip("Optional RawImage to display the output video stream")]
+    [SerializeField] private UnityEngine.UI.RawImage outputRawImage;
     [Tooltip("Optional TextMeshPro text to display the current prompt")]
     [SerializeField] private TMP_Text promptDisplayText;
     [Tooltip("Optional TextMeshPro text to display noise scale and stream status")]
@@ -218,6 +231,9 @@ public class DaydreamAPIManager : MonoBehaviour
 
         StartCoroutine(WebRTC.Update());
 
+        // Recreate RenderTextures at selected resolution
+        RecreateRenderTexturesAtStart();
+
         // Wait 3 seconds before starting streaming to ensure Unity is fully initialized
         StartCoroutine(DelayedStart());
     }
@@ -245,7 +261,7 @@ public class DaydreamAPIManager : MonoBehaviour
                 UpdateParameters();
             }
         }
-        
+
         if (resetCache)
         {
             resetCache = false;
@@ -254,6 +270,9 @@ public class DaydreamAPIManager : MonoBehaviour
                 ResetCache();
             }
         }
+
+        // Update width/height when preset changes
+        UpdateResolutionFromPreset();
     }
 
     #endregion
@@ -517,9 +536,120 @@ public class DaydreamAPIManager : MonoBehaviour
         UpdateUIDisplays();
     }
 
+    /// <summary>
+    /// Update width/height based on selected preset
+    /// </summary>
+    private void UpdateResolutionFromPreset()
+    {
+        switch (resolutionPreset)
+        {
+            case ResolutionPreset.Preset_448x252:
+                width = 448; height = 252; break;
+            case ResolutionPreset.Preset_576x324:
+                width = 576; height = 324; break;
+            case ResolutionPreset.Preset_704x396:
+                width = 704; height = 396; break;
+            case ResolutionPreset.Preset_1088x612:
+                width = 1088; height = 612; break;
+            case ResolutionPreset.Custom:
+                // Keep current width/height values
+                break;
+        }
+    }
+
     #endregion
 
     #region Core Workflow
+
+    /// <summary>
+    /// Create RenderTextures at the selected resolution on scene start
+    /// </summary>
+    private void RecreateRenderTexturesAtStart()
+    {
+        Debug.Log($"[DaydreamAPI] Setting up RenderTextures for resolution {width}x{height}");
+
+        // Handle input texture - create or resize if wrong size
+        if (inputVideoTexture == null)
+        {
+            Debug.Log("[DaydreamAPI] Creating new input texture");
+            inputVideoTexture = CreateRenderTexture(width, height, "DaydreamInputTexture");
+        }
+        else if (inputVideoTexture.width != width || inputVideoTexture.height != height)
+        {
+            Debug.Log($"[DaydreamAPI] Resizing input texture from {inputVideoTexture.width}x{inputVideoTexture.height} to {width}x{height}");
+            ResizeRenderTexture(inputVideoTexture, width, height);
+        }
+        else
+        {
+            Debug.Log($"[DaydreamAPI] Using existing input texture: {inputVideoTexture.name} ({inputVideoTexture.width}x{inputVideoTexture.height})");
+        }
+
+        // Handle output texture - create or resize if wrong size
+        if (outputVideoTexture == null)
+        {
+            Debug.Log("[DaydreamAPI] Creating new output texture");
+            outputVideoTexture = CreateRenderTexture(width, height, "DaydreamOutputTexture");
+        }
+        else if (outputVideoTexture.width != width || outputVideoTexture.height != height)
+        {
+            Debug.Log($"[DaydreamAPI] Resizing output texture from {outputVideoTexture.width}x{outputVideoTexture.height} to {width}x{height}");
+            ResizeRenderTexture(outputVideoTexture, width, height);
+        }
+        else
+        {
+            Debug.Log($"[DaydreamAPI] Using existing output texture: {outputVideoTexture.name} ({outputVideoTexture.width}x{outputVideoTexture.height})");
+        }
+
+        // Apply output texture to RawImage if assigned
+        if (outputRawImage != null)
+        {
+            outputRawImage.texture = outputVideoTexture;
+            Debug.Log($"[DaydreamAPI] Applied output texture to RawImage ({outputVideoTexture.width}x{outputVideoTexture.height})");
+        }
+
+        // Propagate to other systems
+        PropagateResolutionToOtherSystems();
+    }
+
+    /// <summary>
+    /// Resize an existing RenderTexture while keeping the same object reference
+    /// This preserves camera and material references
+    /// </summary>
+    private void ResizeRenderTexture(RenderTexture rt, int newWidth, int newHeight)
+    {
+        rt.Release();
+        rt.width = newWidth;
+        rt.height = newHeight;
+        rt.Create();
+    }
+
+    /// <summary>
+    /// Create a new RenderTexture with the specified dimensions and format
+    /// </summary>
+    private RenderTexture CreateRenderTexture(int w, int h, string textureName)
+    {
+        RenderTexture rt = new RenderTexture(w, h, 24,
+            UnityEngine.Experimental.Rendering.GraphicsFormat.B8G8R8A8_SRGB);
+        rt.name = textureName;
+        rt.autoGenerateMips = false;
+        rt.useMipMap = false;
+        rt.filterMode = FilterMode.Bilinear;
+        rt.wrapMode = TextureWrapMode.Clamp;
+        return rt;
+    }
+
+    /// <summary>
+    /// Notify other systems about the resolution
+    /// </summary>
+    private void PropagateResolutionToOtherSystems()
+    {
+        // Update InputSwitcher
+        InputSwitcher switcher = FindFirstObjectByType<InputSwitcher>();
+        if (switcher != null)
+        {
+            switcher.CreateTexturesAtResolution(width, height);
+        }
+    }
 
     private IEnumerator StreamingWorkflow()
     {
