@@ -238,6 +238,31 @@ public class OpenPoseSkeletonRenderer : MonoBehaviour
         }
     }
     
+    /// <summary>
+    /// Resize source and combined textures to match the new resolution.
+    /// Called by DaydreamAPIManager when resolution is set.
+    /// </summary>
+    public void ResizeTextures(int newWidth, int newHeight)
+    {
+        if (sourceVideoTexture != null && (sourceVideoTexture.width != newWidth || sourceVideoTexture.height != newHeight))
+        {
+            Debug.Log($"[OpenPoseRenderer] Resizing sourceVideoTexture from {sourceVideoTexture.width}x{sourceVideoTexture.height} to {newWidth}x{newHeight}");
+            sourceVideoTexture.Release();
+            sourceVideoTexture.width = newWidth;
+            sourceVideoTexture.height = newHeight;
+            sourceVideoTexture.Create();
+        }
+
+        if (combinedVideoTexture != null && (combinedVideoTexture.width != newWidth || combinedVideoTexture.height != newHeight))
+        {
+            Debug.Log($"[OpenPoseRenderer] Resizing combinedVideoTexture from {combinedVideoTexture.width}x{combinedVideoTexture.height} to {newWidth}x{newHeight}");
+            combinedVideoTexture.Release();
+            combinedVideoTexture.width = newWidth;
+            combinedVideoTexture.height = newHeight;
+            combinedVideoTexture.Create();
+        }
+    }
+
     // Re-cache bone transforms if animator changes
     void OnValidate()
     {

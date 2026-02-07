@@ -129,6 +129,37 @@ public class DepthColorToTexture : MonoBehaviour
         Graphics.Blit(depthSource, depthTexture, depthMaterial);
     }
     
+    /// <summary>
+    /// Resize the depth texture and character mask texture to match the new resolution.
+    /// Called by DaydreamAPIManager when resolution is set.
+    /// </summary>
+    public void ResizeTextures(int newWidth, int newHeight)
+    {
+        if (depthTexture != null && (depthTexture.width != newWidth || depthTexture.height != newHeight))
+        {
+            Debug.Log($"[DepthColorToTexture] Resizing depthTexture from {depthTexture.width}x{depthTexture.height} to {newWidth}x{newHeight}");
+            depthTexture.Release();
+            depthTexture.width = newWidth;
+            depthTexture.height = newHeight;
+            depthTexture.Create();
+        }
+
+        if (characterMaskTexture != null && (characterMaskTexture.width != newWidth || characterMaskTexture.height != newHeight))
+        {
+            Debug.Log($"[DepthColorToTexture] Resizing characterMaskTexture from {characterMaskTexture.width}x{characterMaskTexture.height} to {newWidth}x{newHeight}");
+            characterMaskTexture.Release();
+            characterMaskTexture.width = newWidth;
+            characterMaskTexture.height = newHeight;
+            characterMaskTexture.Create();
+        }
+
+        // Update camera aspect ratio
+        if (targetCamera != null)
+        {
+            targetCamera.aspect = (float)newWidth / (float)newHeight;
+        }
+    }
+
     void OnDestroy()
     {
         if (characterMaskTexture != null)

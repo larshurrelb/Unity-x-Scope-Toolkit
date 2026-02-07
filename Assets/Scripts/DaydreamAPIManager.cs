@@ -16,6 +16,14 @@ public enum ResolutionPreset
     Custom            // User-defined
 }
 
+public enum PipelinePreset
+{
+    LongLive,            // "longlive" - General-purpose, ~20GB VRAM
+    StreamDiffusionV2,   // "streamdiffusionv2" - V2V optimized, ~20GB VRAM
+    MemFlow,             // "memflow" - Temporal consistency, ~20GB VRAM
+    KreaRealtimeVideo    // "krea-realtime-video" - 14B model, ~32GB VRAM
+}
+
 /// <summary>
 /// Manages the connection to the RunPod LongLive API.
 /// Handles pipeline loading, WebRTC signaling (single connection for send/recv),
@@ -47,6 +55,8 @@ public class DaydreamAPIManager : MonoBehaviour
         public int height;
         public int width;
         public int seed;
+        public bool vace_enabled;
+        public string vae_type = "wan";
     }
 
     [Serializable]
@@ -134,6 +144,9 @@ public class DaydreamAPIManager : MonoBehaviour
     [Header("API Configuration")]
     [SerializeField] private string runPodBaseUrl = "";
 
+    [Header("Pipeline Selection")]
+    [SerializeField] private PipelinePreset pipelinePreset = PipelinePreset.LongLive;
+
     [Header("Input/Output")]
     [Tooltip("The RenderTexture that provides the input video stream.")]
     [SerializeField] private RenderTexture inputVideoTexture;
@@ -161,6 +174,11 @@ public class DaydreamAPIManager : MonoBehaviour
     [SerializeField] private bool resetCache = false;
     [Tooltip("Auto-manage cache (disable for manual control)")]
     [SerializeField] private bool manageCache = true;
+
+    [Header("Krea Realtime Settings")]
+    [Tooltip("KV cache attention bias (Krea pipeline only). Helps prevent repetitive motion.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float kvCacheAttentionBias = 0.3f;
 
     [Header("UI Display")]
     [Tooltip("Optional RawImage to display the output video stream")]
@@ -200,9 +218,44 @@ public class DaydreamAPIManager : MonoBehaviour
             Debug.LogWarning("[RunPod] Cannot set empty URL.");
             return;
         }
-        
+
         runPodBaseUrl = url.TrimEnd('/');
         Debug.Log($"[RunPod] Base URL set to: {runPodBaseUrl}");
+    }
+
+    /// <summary>
+    /// Returns the API pipeline_id string for a given PipelinePreset.
+    /// </summary>
+    public static string GetPipelineId(PipelinePreset preset)
+    {
+        switch (preset)
+        {
+            case PipelinePreset.LongLive:           return "longlive";
+            case PipelinePreset.StreamDiffusionV2:   return "streamdiffusionv2";
+            case PipelinePreset.MemFlow:             return "memflow";
+            case PipelinePreset.KreaRealtimeVideo:   return "krea-realtime-video";
+            default:                                 return "longlive";
+        }
+    }
+
+    /// <summary>
+    /// Get the currently selected pipeline preset.
+    /// </summary>
+    public PipelinePreset GetPipelinePreset() => pipelinePreset;
+
+    /// <summary>
+    /// Get the API pipeline_id string for the currently selected pipeline.
+    /// </summary>
+    public string GetCurrentPipelineId() => GetPipelineId(pipelinePreset);
+
+    /// <summary>
+    /// Set the pipeline preset at runtime.
+    /// Note: Changing pipeline mid-stream requires stopping and restarting the connection.
+    /// </summary>
+    public void SetPipelinePreset(PipelinePreset preset)
+    {
+        pipelinePreset = preset;
+        Debug.Log($"[RunPod] Pipeline set to: {GetPipelineId(preset)}");
     }
 
     #endregion
@@ -450,23 +503,16 @@ public class DaydreamAPIManager : MonoBehaviour
 
         var paramsObj = new RunPodParameters
         {
+            pipeline_ids = new string[] { GetPipelineId(pipelinePreset) },
             prompts = new List<PromptData> { new PromptData { text = prompt, weight = 1.0f } },
             denoising_step_list = denoisingSteps,
             noise_scale = noiseScale
         };
-
-        // Note: JsonUtility has limitations with nested lists/objects sometimes. 
-        // We might need a custom serializer if this fails, but for simple structures it should work.
-        // However, JsonUtility cannot serialize top-level lists or dictionaries directly, 
-        // but RunPodParameters is a class, so it should be fine.
-        // BUT: JsonUtility does NOT support serializing List<T> where T is a custom class unless T is Serializable.
-        // PromptData is Serializable.
-        
-        // Unity's JsonUtility is tricky with arrays/lists. 
-        // Let's construct the JSON manually for safety or use a wrapper if needed.
-        // Actually, let's try a manual JSON construction for the parameters to be safe and match the exact format.
-        
         string json = JsonUtility.ToJson(paramsObj);
+        if (pipelinePreset == PipelinePreset.KreaRealtimeVideo)
+        {
+            json = json.TrimEnd('}') + $",\"kv_cache_attention_bias\":{kvCacheAttentionBias}}}";
+        }
         Debug.Log($"[RunPod] Sending update: {json}");
         dataChannel.Send(json);
     }
@@ -500,6 +546,9 @@ public class DaydreamAPIManager : MonoBehaviour
             return;
         }
 
+        // Ensure pipeline_ids matches the selected pipeline
+        customParams.pipeline_ids = new string[] { GetPipelineId(pipelinePreset) };
+
         // Update internal fields for UI display
         if (customParams.prompts != null && customParams.prompts.Count > 0)
         {
@@ -521,8 +570,11 @@ public class DaydreamAPIManager : MonoBehaviour
     /// </summary>
     public void SetInitialParameters(RunPodParameters initialParams)
     {
+        // Ensure pipeline_ids matches the selected pipeline
+        initialParams.pipeline_ids = new string[] { GetPipelineId(pipelinePreset) };
+
         pendingInitialParameters = initialParams;
-        
+
         // Update internal fields for UI display
         if (initialParams.prompts != null && initialParams.prompts.Count > 0)
         {
@@ -649,6 +701,20 @@ public class DaydreamAPIManager : MonoBehaviour
         {
             switcher.CreateTexturesAtResolution(width, height);
         }
+
+        // Update OpenPoseSkeletonRenderer
+        OpenPoseSkeletonRenderer openPose = FindFirstObjectByType<OpenPoseSkeletonRenderer>();
+        if (openPose != null)
+        {
+            openPose.ResizeTextures(width, height);
+        }
+
+        // Update DepthColorToTexture
+        DepthColorToTexture depthColor = FindFirstObjectByType<DepthColorToTexture>();
+        if (depthColor != null)
+        {
+            depthColor.ResizeTextures(width, height);
+        }
     }
 
     private IEnumerator StreamingWorkflow()
@@ -742,13 +808,14 @@ public class DaydreamAPIManager : MonoBehaviour
         {
             initialParams = new RunPodParameters
             {
+                pipeline_ids = new string[] { GetPipelineId(pipelinePreset) },
                 denoising_step_list = denoisingSteps,
                 prompts = new List<PromptData> { new PromptData { text = prompt, weight = 1.0f } },
                 noise_scale = noiseScale,
                 manage_cache = manageCache,
                 vace_enabled = false  // Explicitly disable VACE for faster Normal Mode
             };
-            Debug.Log($"[RunPod] Using default initial parameters: prompt='{prompt}', noise_scale={noiseScale}, vace_enabled=false");
+            Debug.Log($"[RunPod] Using default initial parameters: pipeline={GetPipelineId(pipelinePreset)}, prompt='{prompt}', noise_scale={noiseScale}, vace_enabled=false");
         }
 
         // Use JsonUtility for safe serialization including proper string escaping
@@ -760,6 +827,16 @@ public class DaydreamAPIManager : MonoBehaviour
         };
 
         string offerJson = JsonUtility.ToJson(offerRequest);
+        if (pipelinePreset == PipelinePreset.KreaRealtimeVideo)
+        {
+            // Inject kv_cache_attention_bias into the nested initialParameters object
+            // The JSON ends with ...initialParameters:{...}}" so we replace the last "}}"
+            int lastTwo = offerJson.LastIndexOf("}}");
+            if (lastTwo >= 0)
+            {
+                offerJson = offerJson.Substring(0, lastTwo) + $",\"kv_cache_attention_bias\":{kvCacheAttentionBias}}}}}";
+            }
+        }
         Debug.Log($"[RunPod] Generated Offer JSON (first 100 chars): {offerJson.Substring(0, Math.Min(100, offerJson.Length))}...");
         
         var offerReq = new UnityWebRequest($"{runPodBaseUrl}/api/v1/webrtc/offer", "POST");
@@ -811,7 +888,9 @@ public class DaydreamAPIManager : MonoBehaviour
     }
     private IEnumerator LoadPipeline()
     {
-        Debug.Log($"[RunPod] Checking pipeline status at {runPodBaseUrl}/api/v1/pipeline/status");
+        string targetPipelineId = GetPipelineId(pipelinePreset);
+        Debug.Log($"[RunPod] Checking pipeline status at {runPodBaseUrl}/api/v1/pipeline/status (target: {targetPipelineId})");
+
         // Check status first
         var statusReq = UnityWebRequest.Get($"{runPodBaseUrl}/api/v1/pipeline/status");
         yield return statusReq.SendWebRequest();
@@ -821,20 +900,25 @@ public class DaydreamAPIManager : MonoBehaviour
         {
             Debug.Log($"[RunPod] Status check response: {statusReq.downloadHandler.text}");
             var statusData = JsonUtility.FromJson<PipelineStatusResponse>(statusReq.downloadHandler.text);
-            if (statusData.status == "loaded" && statusData.pipeline_id == "longlive")
+
+            if (statusData.status == "loaded" && statusData.pipeline_id == targetPipelineId)
             {
-                // Check if resolution matches our desired settings
-                if (statusData.load_params != null && 
-                    statusData.load_params.width == width && 
+                // Correct pipeline loaded — check if resolution matches
+                if (statusData.load_params != null &&
+                    statusData.load_params.width == width &&
                     statusData.load_params.height == height)
                 {
-                    Debug.Log($"[RunPod] Pipeline already loaded with correct resolution ({width}x{height}).");
+                    Debug.Log($"[RunPod] Pipeline '{targetPipelineId}' already loaded with correct resolution ({width}x{height}).");
                     needsLoad = false;
                 }
                 else
                 {
-                    Debug.Log($"[RunPod] Pipeline loaded but resolution mismatch. Current: {statusData.load_params?.width}x{statusData.load_params?.height}, Required: {width}x{height}. Reloading...");
+                    Debug.Log($"[RunPod] Pipeline '{targetPipelineId}' loaded but resolution mismatch. Current: {statusData.load_params?.width}x{statusData.load_params?.height}, Required: {width}x{height}. Reloading...");
                 }
+            }
+            else if (statusData.status == "loaded")
+            {
+                Debug.Log($"[RunPod] Different pipeline loaded ('{statusData.pipeline_id}'). Switching to '{targetPipelineId}'...");
             }
         }
         else
@@ -844,13 +928,20 @@ public class DaydreamAPIManager : MonoBehaviour
 
         if (needsLoad)
         {
-            Debug.Log("[RunPod] Loading pipeline...");
+            Debug.Log($"[RunPod] Loading pipeline '{targetPipelineId}'...");
             var loadReqData = new PipelineLoadRequest
             {
-                pipeline_id = "longlive",
-                load_params = new PipelineLoadParams { height = height, width = width, seed = seed }
+                pipeline_id = targetPipelineId,
+                load_params = new PipelineLoadParams
+                {
+                    height = height,
+                    width = width,
+                    seed = seed,
+                    vace_enabled = false,
+                    vae_type = "wan"
+                }
             };
-            
+
             string loadJson = JsonUtility.ToJson(loadReqData);
             Debug.Log($"[RunPod] Sending load request: {loadJson}");
             var loadReq = new UnityWebRequest($"{runPodBaseUrl}/api/v1/pipeline/load", "POST");
@@ -858,25 +949,46 @@ public class DaydreamAPIManager : MonoBehaviour
             loadReq.uploadHandler = new UploadHandlerRaw(bodyRaw);
             loadReq.downloadHandler = new DownloadHandlerBuffer();
             loadReq.SetRequestHeader("Content-Type", "application/json");
-            
+
             yield return loadReq.SendWebRequest();
 
-            // Poll for status
+            if (loadReq.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError($"[RunPod] Load request failed: {loadReq.error}\n{loadReq.downloadHandler.text}");
+            }
+
+            // Poll until the CORRECT pipeline is loaded
+            status = $"Loading pipeline '{targetPipelineId}'...";
             int attempts = 0;
             while (attempts < 60)
             {
                 yield return new WaitForSeconds(2f);
                 var pollReq = UnityWebRequest.Get($"{runPodBaseUrl}/api/v1/pipeline/status");
                 yield return pollReq.SendWebRequest();
-                
+
                 if (pollReq.result == UnityWebRequest.Result.Success)
                 {
                     var pollData = JsonUtility.FromJson<PipelineStatusResponse>(pollReq.downloadHandler.text);
-                    Debug.Log($"[RunPod] Pipeline status: {pollData.status}");
-                    if (pollData.status == "loaded") break;
-                    if (pollData.status == "error") throw new Exception($"Pipeline error: {pollData.error}");
+                    Debug.Log($"[RunPod] Pipeline status: {pollData.status}, pipeline_id: {pollData.pipeline_id}");
+
+                    // Only break when the CORRECT pipeline is loaded
+                    if (pollData.status == "loaded" && pollData.pipeline_id == targetPipelineId)
+                    {
+                        Debug.Log($"[RunPod] Pipeline '{targetPipelineId}' loaded successfully.");
+                        break;
+                    }
+                    if (pollData.status == "error")
+                    {
+                        Debug.LogError($"[RunPod] Pipeline error: {pollData.error}");
+                        throw new Exception($"Pipeline error: {pollData.error}");
+                    }
                 }
                 attempts++;
+            }
+
+            if (attempts >= 60)
+            {
+                Debug.LogError($"[RunPod] Timed out waiting for pipeline '{targetPipelineId}' to load.");
             }
         }
     }
