@@ -8880,14 +8880,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d2351f8392c1b4225bd4d26add35d45d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DaydreamAPIManagerSD15
-  runPodBaseUrl: https://qsglwmgglgxjal-8000.proxy.runpod.net/
+  runPodBaseUrl: 
   pipelinePreset: 0
   inputVideoTexture: {fileID: 8400000, guid: d568c070b78dd4e4fb85e4159a62622f, type: 2}
   outputVideoTexture: {fileID: 8400000, guid: 5cac3a6f58a3b4c889933af179e7a8b4, type: 2}
   prompt: green trees and hills, blue sky
-  resolutionPreset: 4
-  width: 100
-  height: 100
+  resolutionPreset: 0
+  width: 448
+  height: 256
   seed: 42
   denoisingSteps: e8030000f8020000f4010000fa000000
   noiseScale: 0.2

@@ -61,7 +61,7 @@ public class DaydreamAPIManagerEditor : Editor
         if (currentPreset != ResolutionPreset.Custom)
         {
             EditorGUILayout.HelpBox(
-                $"Resolution: {widthProp.intValue} x {heightProp.intValue} (16:9). Select 'Custom' to edit manually.",
+                $"Resolution: {widthProp.intValue} x {heightProp.intValue}. Select 'Custom' to edit manually. Both dimensions must be divisible by 16.",
                 MessageType.Info);
         }
 

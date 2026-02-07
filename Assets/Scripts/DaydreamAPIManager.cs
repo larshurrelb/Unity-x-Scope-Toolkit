@@ -9,10 +9,10 @@ using TMPro;
 
 public enum ResolutionPreset
 {
-    Preset_448x252,   // Low bandwidth
-    Preset_576x324,   // Medium quality (default)
-    Preset_704x396,   // High quality
-    Preset_1088x612,  // Very high quality
+    Preset_448x256,   // Low bandwidth
+    Preset_576x320,   // Medium quality (default)
+    Preset_704x400,   // High quality
+    Preset_1088x608,  // Very high quality
     Custom            // User-defined
 }
 
@@ -45,7 +45,7 @@ public class DaydreamAPIManager : MonoBehaviour
     [Serializable]
     public class PipelineLoadRequest
     {
-        public string pipeline_id;
+        public string[] pipeline_ids;
         public PipelineLoadParams load_params;
     }
 
@@ -157,9 +157,9 @@ public class DaydreamAPIManager : MonoBehaviour
     [TextArea(3, 10)]
     [SerializeField] private string prompt = "A beautiful cyberpunk cityscape at night";
     [Header("Resolution Settings")]
-    [SerializeField] private ResolutionPreset resolutionPreset = ResolutionPreset.Preset_576x324;
+    [SerializeField] private ResolutionPreset resolutionPreset = ResolutionPreset.Preset_576x320;
     [SerializeField] private int width = 576;
-    [SerializeField] private int height = 324;
+    [SerializeField] private int height = 320;
     [SerializeField] private int seed = 42;
     [Tooltip("Steps for denoising (e.g. 1000, 750, 500, 250)")]
     [SerializeField] private int[] denoisingSteps = new int[] { 1000, 750, 500, 250 };
@@ -595,16 +595,18 @@ public class DaydreamAPIManager : MonoBehaviour
     {
         switch (resolutionPreset)
         {
-            case ResolutionPreset.Preset_448x252:
-                width = 448; height = 252; break;
-            case ResolutionPreset.Preset_576x324:
-                width = 576; height = 324; break;
-            case ResolutionPreset.Preset_704x396:
-                width = 704; height = 396; break;
-            case ResolutionPreset.Preset_1088x612:
-                width = 1088; height = 612; break;
+            case ResolutionPreset.Preset_448x256:
+                width = 448; height = 256; break;
+            case ResolutionPreset.Preset_576x320:
+                width = 576; height = 320; break;
+            case ResolutionPreset.Preset_704x400:
+                width = 704; height = 400; break;
+            case ResolutionPreset.Preset_1088x608:
+                width = 1088; height = 608; break;
             case ResolutionPreset.Custom:
-                // Keep current width/height values
+                // Snap to nearest multiple of 16 (server requirement)
+                width = Mathf.Max(16, (width + 8) / 16 * 16);
+                height = Mathf.Max(16, (height + 8) / 16 * 16);
                 break;
         }
     }
@@ -935,20 +937,29 @@ public class DaydreamAPIManager : MonoBehaviour
         if (needsLoad)
         {
             Debug.Log($"[RunPod] Loading pipeline '{targetPipelineId}'...");
+            var loadParams = new PipelineLoadParams
+            {
+                height = height,
+                width = width,
+                seed = seed,
+                vace_enabled = false,
+                vae_type = "wan"
+            };
+
             var loadReqData = new PipelineLoadRequest
             {
-                pipeline_id = targetPipelineId,
-                load_params = new PipelineLoadParams
-                {
-                    height = height,
-                    width = width,
-                    seed = seed,
-                    vace_enabled = false,
-                    vae_type = "wan"
-                }
+                pipeline_ids = new string[] { targetPipelineId },
+                load_params = loadParams
             };
 
             string loadJson = JsonUtility.ToJson(loadReqData);
+
+            // Krea requires fp8 quantization for the 14B model — inject into load_params JSON
+            if (pipelinePreset == PipelinePreset.KreaRealtimeVideo)
+            {
+                // Insert quantization before the closing of load_params object
+                loadJson = loadJson.Replace("\"vae_type\":\"wan\"}", "\"vae_type\":\"wan\",\"quantization\":\"fp8_e4m3fn\"}");
+            }
             Debug.Log($"[RunPod] Sending load request: {loadJson}");
             var loadReq = new UnityWebRequest($"{runPodBaseUrl}/api/v1/pipeline/load", "POST");
             byte[] bodyRaw = Encoding.UTF8.GetBytes(loadJson);

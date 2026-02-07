@@ -30,8 +30,8 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _DepthMax: 0.074
-    - _DepthMin: 0
+    - _DepthMax: 0.019
+    - _DepthMin: 0.022
     - _Invert: 1
     - _StencilRef: 1
     - _UseCharacterMask: 1
