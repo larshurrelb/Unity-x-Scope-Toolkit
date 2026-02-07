@@ -64,6 +64,7 @@ public class DaydreamAPIManager : MonoBehaviour
         public int[] denoising_step_list = new int[] { 1000, 750, 500, 250 };
         public float noise_scale = 0.8f;
         public bool manage_cache = true;
+        public bool vace_enabled = false;  // Disable VACE for Normal Mode (faster, lower VRAM)
     }
 
     [Serializable]
@@ -214,8 +215,18 @@ public class DaydreamAPIManager : MonoBehaviour
         {
             runPodBaseUrl = runPodBaseUrl.TrimEnd('/');
         }
-        
+
         StartCoroutine(WebRTC.Update());
+
+        // Wait 3 seconds before starting streaming to ensure Unity is fully initialized
+        StartCoroutine(DelayedStart());
+    }
+
+    private IEnumerator DelayedStart()
+    {
+        Debug.Log("[RunPod] Waiting 3 seconds for Unity initialization...");
+        yield return new WaitForSeconds(3f);
+        Debug.Log("[RunPod] Unity initialized, starting streaming workflow.");
         StartStreaming();
     }
 
@@ -604,9 +615,10 @@ public class DaydreamAPIManager : MonoBehaviour
                 denoising_step_list = denoisingSteps,
                 prompts = new List<PromptData> { new PromptData { text = prompt, weight = 1.0f } },
                 noise_scale = noiseScale,
-                manage_cache = manageCache
+                manage_cache = manageCache,
+                vace_enabled = false  // Explicitly disable VACE for faster Normal Mode
             };
-            Debug.Log($"[RunPod] Using default initial parameters: prompt='{prompt}', noise_scale={noiseScale}");
+            Debug.Log($"[RunPod] Using default initial parameters: prompt='{prompt}', noise_scale={noiseScale}, vace_enabled=false");
         }
 
         // Use JsonUtility for safe serialization including proper string escaping
