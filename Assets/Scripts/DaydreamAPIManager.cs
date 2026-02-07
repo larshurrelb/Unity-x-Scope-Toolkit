@@ -672,6 +672,11 @@ public class DaydreamAPIManager : MonoBehaviour
         rt.Release();
         rt.width = newWidth;
         rt.height = newHeight;
+        // Ensure depth stencil format is set for URP Render Graph compatibility
+        if (rt.depthStencilFormat == UnityEngine.Experimental.Rendering.GraphicsFormat.None)
+        {
+            rt.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
+        }
         rt.Create();
     }
 
@@ -680,8 +685,9 @@ public class DaydreamAPIManager : MonoBehaviour
     /// </summary>
     private RenderTexture CreateRenderTexture(int w, int h, string textureName)
     {
-        RenderTexture rt = new RenderTexture(w, h, 24,
+        RenderTexture rt = new RenderTexture(w, h, 0,
             UnityEngine.Experimental.Rendering.GraphicsFormat.B8G8R8A8_SRGB);
+        rt.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
         rt.name = textureName;
         rt.autoGenerateMips = false;
         rt.useMipMap = false;

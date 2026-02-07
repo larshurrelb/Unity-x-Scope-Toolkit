@@ -501,6 +501,9 @@ public class InputSwitcher : MonoBehaviour
             Debug.LogWarning("[InputSwitcher] API Manager not assigned for start screen!");
             return;
         }
+
+        // Skip if not streaming yet - QueueStartScreenParameters handles the initial case
+        if (!apiManager.IsStreaming) return;
         
         // Create custom parameters for start screen
         var startParams = new DaydreamAPIManager.RunPodParameters
@@ -597,6 +600,10 @@ public class InputSwitcher : MonoBehaviour
             existingTexture.Release();
             existingTexture.width = width;
             existingTexture.height = height;
+            if (existingTexture.depthStencilFormat == UnityEngine.Experimental.Rendering.GraphicsFormat.None)
+            {
+                existingTexture.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
+            }
             existingTexture.Create();
             return existingTexture;
         }
@@ -612,8 +619,9 @@ public class InputSwitcher : MonoBehaviour
     /// </summary>
     private RenderTexture CreateRenderTexture(int width, int height, string name)
     {
-        RenderTexture rt = new RenderTexture(width, height, 24,
+        RenderTexture rt = new RenderTexture(width, height, 0,
             UnityEngine.Experimental.Rendering.GraphicsFormat.B8G8R8A8_SRGB);
+        rt.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
         rt.name = name;
         rt.filterMode = FilterMode.Bilinear;
         rt.wrapMode = TextureWrapMode.Clamp;

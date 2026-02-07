@@ -36,7 +36,7 @@ public class DepthColorToTexture : MonoBehaviour
             depthTexture.anisoLevel = 0;
             
             // Create character mask texture with same dimensions
-            characterMaskTexture = new RenderTexture(depthTexture.width, depthTexture.height, 0, RenderTextureFormat.R8);
+            characterMaskTexture = new RenderTexture(depthTexture.width, depthTexture.height, 24, RenderTextureFormat.R8);
             characterMaskTexture.filterMode = FilterMode.Point;
             characterMaskTexture.anisoLevel = 0;
         }
@@ -141,6 +141,8 @@ public class DepthColorToTexture : MonoBehaviour
             depthTexture.Release();
             depthTexture.width = newWidth;
             depthTexture.height = newHeight;
+            if (depthTexture.depthStencilFormat == UnityEngine.Experimental.Rendering.GraphicsFormat.None)
+                depthTexture.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
             depthTexture.Create();
         }
 
