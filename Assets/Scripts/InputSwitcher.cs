@@ -501,6 +501,9 @@ public class InputSwitcher : MonoBehaviour
             Debug.LogWarning("[InputSwitcher] API Manager not assigned for start screen!");
             return;
         }
+
+        // Skip if not streaming yet - QueueStartScreenParameters handles the initial case
+        if (!apiManager.IsStreaming) return;
         
         // Create custom parameters for start screen
         var startParams = new DaydreamAPIManager.RunPodParameters
@@ -550,5 +553,78 @@ public class InputSwitcher : MonoBehaviour
         StartCoroutine(SetStartScreenMode(false));
         
         Debug.Log("[InputSwitcher] Game started - PromptManager now controlling prompts");
+    }
+
+    /// <summary>
+    /// Create or resize RenderTextures to match the specified resolution
+    /// Called by DaydreamAPIManager at scene start
+    /// </summary>
+    public void CreateTexturesAtResolution(int newWidth, int newHeight)
+    {
+        Debug.Log($"[InputSwitcher] Setting up textures for resolution {newWidth}x{newHeight}");
+
+        // Create or resize videoTexture1
+        videoTexture1 = CreateOrResizeTexture(videoTexture1, newWidth, newHeight, "VideoTexture1");
+
+        // Create or resize videoTexture2
+        videoTexture2 = CreateOrResizeTexture(videoTexture2, newWidth, newHeight, "VideoTexture2");
+
+        // Create or resize videoTexture3
+        videoTexture3 = CreateOrResizeTexture(videoTexture3, newWidth, newHeight, "VideoTexture3");
+
+        // Create or resize outputTexture
+        outputTexture = CreateOrResizeTexture(outputTexture, newWidth, newHeight, "OutputTexture");
+
+        // Set the initial active source if not already set
+        if (activeSourceTexture == null)
+        {
+            activeSourceTexture = videoTexture1;
+            currentIndex = 1;
+        }
+    }
+
+    /// <summary>
+    /// Create a new RenderTexture or resize existing one if dimensions don't match
+    /// </summary>
+    private RenderTexture CreateOrResizeTexture(RenderTexture existingTexture, int width, int height, string name)
+    {
+        if (existingTexture == null)
+        {
+            Debug.Log($"[InputSwitcher] Creating new texture: {name}");
+            return CreateRenderTexture(width, height, name);
+        }
+        else if (existingTexture.width != width || existingTexture.height != height)
+        {
+            Debug.Log($"[InputSwitcher] Resizing {name} from {existingTexture.width}x{existingTexture.height} to {width}x{height}");
+            // Resize the existing texture to preserve references
+            existingTexture.Release();
+            existingTexture.width = width;
+            existingTexture.height = height;
+            if (existingTexture.depthStencilFormat == UnityEngine.Experimental.Rendering.GraphicsFormat.None)
+            {
+                existingTexture.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
+            }
+            existingTexture.Create();
+            return existingTexture;
+        }
+        else
+        {
+            Debug.Log($"[InputSwitcher] Using existing texture: {name} ({existingTexture.width}x{existingTexture.height})");
+            return existingTexture;
+        }
+    }
+
+    /// <summary>
+    /// Create a new RenderTexture with the specified dimensions
+    /// </summary>
+    private RenderTexture CreateRenderTexture(int width, int height, string name)
+    {
+        RenderTexture rt = new RenderTexture(width, height, 0,
+            UnityEngine.Experimental.Rendering.GraphicsFormat.B8G8R8A8_SRGB);
+        rt.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
+        rt.name = name;
+        rt.filterMode = FilterMode.Bilinear;
+        rt.wrapMode = TextureWrapMode.Clamp;
+        return rt;
     }
 }

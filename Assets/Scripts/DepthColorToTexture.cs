@@ -36,7 +36,7 @@ public class DepthColorToTexture : MonoBehaviour
             depthTexture.anisoLevel = 0;
             
             // Create character mask texture with same dimensions
-            characterMaskTexture = new RenderTexture(depthTexture.width, depthTexture.height, 0, RenderTextureFormat.R8);
+            characterMaskTexture = new RenderTexture(depthTexture.width, depthTexture.height, 24, RenderTextureFormat.R8);
             characterMaskTexture.filterMode = FilterMode.Point;
             characterMaskTexture.anisoLevel = 0;
         }
@@ -129,6 +129,39 @@ public class DepthColorToTexture : MonoBehaviour
         Graphics.Blit(depthSource, depthTexture, depthMaterial);
     }
     
+    /// <summary>
+    /// Resize the depth texture and character mask texture to match the new resolution.
+    /// Called by DaydreamAPIManager when resolution is set.
+    /// </summary>
+    public void ResizeTextures(int newWidth, int newHeight)
+    {
+        if (depthTexture != null && (depthTexture.width != newWidth || depthTexture.height != newHeight))
+        {
+            Debug.Log($"[DepthColorToTexture] Resizing depthTexture from {depthTexture.width}x{depthTexture.height} to {newWidth}x{newHeight}");
+            depthTexture.Release();
+            depthTexture.width = newWidth;
+            depthTexture.height = newHeight;
+            if (depthTexture.depthStencilFormat == UnityEngine.Experimental.Rendering.GraphicsFormat.None)
+                depthTexture.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
+            depthTexture.Create();
+        }
+
+        if (characterMaskTexture != null && (characterMaskTexture.width != newWidth || characterMaskTexture.height != newHeight))
+        {
+            Debug.Log($"[DepthColorToTexture] Resizing characterMaskTexture from {characterMaskTexture.width}x{characterMaskTexture.height} to {newWidth}x{newHeight}");
+            characterMaskTexture.Release();
+            characterMaskTexture.width = newWidth;
+            characterMaskTexture.height = newHeight;
+            characterMaskTexture.Create();
+        }
+
+        // Update camera aspect ratio
+        if (targetCamera != null)
+        {
+            targetCamera.aspect = (float)newWidth / (float)newHeight;
+        }
+    }
+
     void OnDestroy()
     {
         if (characterMaskTexture != null)

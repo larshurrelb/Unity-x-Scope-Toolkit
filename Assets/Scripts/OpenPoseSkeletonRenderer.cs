@@ -117,6 +117,9 @@ public class OpenPoseSkeletonRenderer : MonoBehaviour
     
     void CacheBoneTransforms()
     {
+        // joints array is initialized in Start(), skip if not ready yet
+        if (joints == null) return;
+
         // Auto-find player animator if not assigned
         if (playerAnimator == null)
         {
@@ -140,10 +143,7 @@ public class OpenPoseSkeletonRenderer : MonoBehaviour
             {
                 joints[i].cachedTransform = playerAnimator.GetBoneTransform(joints[i].unityBone);
                 
-                if (joints[i].cachedTransform == null)
-                {
-                    Debug.LogWarning($"[OpenPoseRenderer] Could not find bone transform for {joints[i].name} ({joints[i].unityBone})");
-                }
+                // Silently skip bones not present on the avatar (e.g. eyes, ears)
             }
         }
         
@@ -238,6 +238,35 @@ public class OpenPoseSkeletonRenderer : MonoBehaviour
         }
     }
     
+    /// <summary>
+    /// Resize source and combined textures to match the new resolution.
+    /// Called by DaydreamAPIManager when resolution is set.
+    /// </summary>
+    public void ResizeTextures(int newWidth, int newHeight)
+    {
+        if (sourceVideoTexture != null && (sourceVideoTexture.width != newWidth || sourceVideoTexture.height != newHeight))
+        {
+            Debug.Log($"[OpenPoseRenderer] Resizing sourceVideoTexture from {sourceVideoTexture.width}x{sourceVideoTexture.height} to {newWidth}x{newHeight}");
+            sourceVideoTexture.Release();
+            sourceVideoTexture.width = newWidth;
+            sourceVideoTexture.height = newHeight;
+            if (sourceVideoTexture.depthStencilFormat == UnityEngine.Experimental.Rendering.GraphicsFormat.None)
+                sourceVideoTexture.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
+            sourceVideoTexture.Create();
+        }
+
+        if (combinedVideoTexture != null && (combinedVideoTexture.width != newWidth || combinedVideoTexture.height != newHeight))
+        {
+            Debug.Log($"[OpenPoseRenderer] Resizing combinedVideoTexture from {combinedVideoTexture.width}x{combinedVideoTexture.height} to {newWidth}x{newHeight}");
+            combinedVideoTexture.Release();
+            combinedVideoTexture.width = newWidth;
+            combinedVideoTexture.height = newHeight;
+            if (combinedVideoTexture.depthStencilFormat == UnityEngine.Experimental.Rendering.GraphicsFormat.None)
+                combinedVideoTexture.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D24_UNorm_S8_UInt;
+            combinedVideoTexture.Create();
+        }
+    }
+
     // Re-cache bone transforms if animator changes
     void OnValidate()
     {

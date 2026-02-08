@@ -3,15 +3,16 @@
 </div>
 
 # Unity x Scope Toolkit
+V 1.2
 
-A Unity toolkit for creating **real-time AI-stylized video experiences** using [Scope's LongLive](https://github.com/ScopeFoundry/Scope) API via WebRTC streaming.
+A Unity toolkit for creating **real-time AI-stylized video experiences** using [Scope](https://github.com/daydreamlive/scope) pipelines via WebRTC streaming.
 
 ![Unity](https://img.shields.io/badge/Unity-6000.0+-black?logo=unity)
 ![URP](https://img.shields.io/badge/URP-Required-blue)
 
 ## What It Does
 
-Captures gameplay footage (with depth extraction and character masking), streams it to RunPod's LongLive API, and displays AI-transformed output in real-time. Supports dynamic prompts based on player state, interactive NPC chat via Google Gemini, and location-based prompt zones.
+Captures gameplay footage (with depth extraction and character masking), streams it to a RunPod-hosted or Local Scope API, and displays AI-transformed output in real-time. Supports multiple pipelines, dynamic prompts based on player state, interactive NPC chat via Google Gemini, and location-based prompt zones.
 
 ---
 
@@ -20,7 +21,7 @@ Captures gameplay footage (with depth extraction and character masking), streams
 | Requirement | Details |
 |-------------|---------|
 | **Unity** | 6000.0.5812+ with Universal Render Pipeline |
-| **RunPod** | Scope LongLive endpoint (recommended: RTX 5090 or 6000 Pro) |
+| **RunPod** | Scope endpoint (see [Pipeline Selection](#pipeline-selection) for GPU requirements) |
 | **Gemini API Key** | [Get free key](https://aistudio.google.com/app/apikey) (for NPC chat) |
 
 ---
@@ -33,9 +34,30 @@ Captures gameplay footage (with depth extraction and character masking), streams
    - Click **Import TMP Essentials** if prompted
 3. **Open** `Assets/Scenes/Default Scene.unity`
 4. **Configure API Keys** in the Setup Screen UI or Inspector:
-   - `DaydreamAPIManager` → RunPod URL
+   - `DaydreamAPIManager` → RunPod URL or Localhost
    - `GeminiChatManager` → Gemini API Key
 5. **Press Play**
+
+---
+
+## Pipeline Selection
+
+Select a pipeline from the **Pipeline Preset** dropdown on the `DaydreamAPIManager` inspector. Unity will automatically load the selected pipeline on the server when you press Play.
+
+| Pipeline | ID | VRAM | Best For |
+|----------|----|------|----------|
+| **LongLive** | `longlive` | ~20 GB | General-purpose, smooth prompt transitions |
+| **StreamDiffusion V2** | `streamdiffusionv2` | ~20 GB | Lowest latency, optimized for V2V |
+| **MemFlow** | `memflow` | ~20 GB | Temporal consistency over long sessions |
+| **Krea Realtime Video** | `krea-realtime-video` | ~32 GB | Highest quality (14B model, FP8) |
+
+> **Important:** Each pipeline's model files must be downloaded on the server before first use. Run the pipeline once through the Scope web UI to trigger the download, then you can switch freely from Unity.
+
+### Resolution Presets
+
+Use the **Resolution Preset** dropdown to pick a resolution. Select **Custom** to enter arbitrary values. Lower resolutions are faster; higher resolutions need more VRAM.
+
+> **Important:** Resolutions need to be divisible by 16!
 
 ---
 
@@ -92,7 +114,7 @@ Captures gameplay footage (with depth extraction and character masking), streams
 
 | API | Purpose | Where to Get |
 |-----|---------|--------------|
-| **RunPod LongLive** | Real-time video-to-video AI | Deploy Scope on RunPod |
+| **RunPod Scope** | Real-time video-to-video AI | [Deploy Scope on RunPod](https://docs.daydream.live/scope/getting-started/quickstart#cloud-runpod) |
 | **Google Gemini** | NPC chat conversations | [Google AI Studio](https://aistudio.google.com/app/apikey) |
 
 ---
@@ -111,4 +133,4 @@ See `.github/copilot-instructions.md` for detailed API documentation and archite
 
 ## License
 
-Part of [Scope Workshop 25](https://github.com/ScopeFoundry/Scope). Third-party assets (Starter Assets) must be obtained separately from the Unity Asset Store.
+Part of [Daydream Interactive Ai Programm 25](https://app.daydream.live/creators/hupey/scope-v2v-integration-for-unity). Third-party assets (Starter Assets) must be obtained separately from the Unity Asset Store.
