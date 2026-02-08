@@ -3,6 +3,7 @@
 </div>
 
 # Unity x Scope Toolkit
+V 1.2
 
 A Unity toolkit for creating **real-time AI-stylized video experiences** using [Scope](https://github.com/daydreamlive/scope) pipelines via WebRTC streaming.
 
