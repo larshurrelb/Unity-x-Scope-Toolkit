@@ -133,4 +133,4 @@ See `.github/copilot-instructions.md` for detailed API documentation and archite
 
 ## License
 
-Part of [Daydream Interactive Ai Programm 25](https://app.daydream.live/creators/hupey/scope-v2v-integration-for-unity). Third-party assets (Starter Assets) must be obtained separately from the Unity Asset Store.
+Winner of [Daydream Interactive Ai Programm 25](https://app.daydream.live/creators/hupey/scope-v2v-integration-for-unity). Third-party assets (Starter Assets) must be obtained separately from the Unity Asset Store.
